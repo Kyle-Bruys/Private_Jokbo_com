@@ -1,0 +1,25 @@
+# --- [보안] 절대 올라가면 안 되는 설정 파일 ---
+.streamlit/secrets.toml
+.env
+*.key
+*.pem
+
+# --- [파이썬] 가상환경 및 캐시 ---
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- [운영체제] 불필요한 시스템 파일 ---
+.DS_Store
+Thumbs.db
+
+# --- [IDE] 에디터 설정 ---
+.vscode/
+.idea/
+
+# --- [데이터/결과물] 로컬에서 생성된 PDF 및 로그 ---
+*.pdf
+*.log
