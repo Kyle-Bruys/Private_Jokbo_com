@@ -776,11 +776,11 @@ elif menu == "스마트 학습":
         st.info("닉네임을 입력하고 시험을 선택하면 학습이 시작됩니다.")
 
 # ------------------------------------------
-# 메뉴 5: 주관식 출제 예측 및 PDF 생성 (빈출순 정렬 옵션 추가)
+# 메뉴 5: 주관식 출제 예측 및 PDF 생성 (개수 제한 제거 버전)
 # ------------------------------------------
 elif menu == "주관식 출제 예측":
     st.header("🔮 주관식 출제 예측 및 통합 PDF 생성")
-    st.info("A형(빈출 통합) 원리로 문제를 예측하고, 기존 족보와 합쳐 체계적인 PDF를 생성합니다.")
+    st.info("A형(빈출 통합) 원리로 추출 가능한 모든 문제를 생성하고, 기존 족보와 합쳐 전체 마스터 PDF를 만듭니다.")
 
     # 1. 필터링 설정
     try:
@@ -799,34 +799,32 @@ elif menu == "주관식 출제 예측":
             
         selected_subject = st.selectbox("1️⃣ 대상 과목 선택", subjects, key="predict_sub")
 
-        # 2. 문제 생성 옵션
+        # 2. 문제 생성 및 정렬 옵션
         st.divider()
         st.subheader("⚙️ 문제 생성 및 PDF 옵션")
         col_gen1, col_gen2 = st.columns(2)
         
         with col_gen1:
-            use_a_type = st.checkbox("✅ A형: 빈출 정답 통합형 (힌트 모음)", value=True)
+            use_a_type = st.checkbox("✅ A형: 빈출 정답 통합형 (추출 가능한 모든 문제 포함)", value=True)
             include_original = st.checkbox("✅ 기존 주관식 족보 포함", value=True)
-            # [추가] 정렬 옵션 추가
-            a_type_sort = st.radio("A형 예상 문제 정렬 방식", ["빈출순 (자주 출제된 순서)", "무작위 섞기 (실전 모드)"], horizontal=True)
+            a_type_sort = st.radio("A형 예상 문제 정렬 방식", ["빈출순 (중요도 순)", "무작위 섞기 (실전 모드)"], horizontal=True)
         
         with col_gen2:
             answer_mode = st.radio("해설 배치 방식", ["마지막에 해설", "문제마다 해설"], horizontal=True, key="predict_ans")
-            max_predict = st.number_input("생성할 A형 문제 수", min_value=5, max_value=100, value=20)
+            st.caption("💡 개수 제한 없이 2회 이상 정답으로 등장한 모든 개념을 추출합니다.")
 
         if st.button("🔮 주관식 마스터 PDF 생성하기", type="primary"):
-            with st.spinner("데이터를 분석하여 문제를 재구성 중입니다..."):
+            with st.spinner("전체 데이터를 정밀 분석하여 모든 출제 패턴을 추출 중입니다..."):
                 # 데이터 로드
                 all_data = supabase.table("questions").select("*").eq("exam_name", selected_exam).eq("subject", selected_subject).execute().data
                 
                 mcqs = [q for q in all_data if q['question_type'] == 'MCQ']
                 original_shorts = [q for q in all_data if q['question_type'] != 'MCQ']
                 
-                # 유형별 리스트 초기화
                 a_type_list = []
                 final_original_list = []
 
-                # --- [A형] 빈출 정답 통합형 로직 ---
+                # --- [A형] 빈출 정답 통합형 로직 (제한 없음) ---
                 if use_a_type and mcqs:
                     answer_map = {}
                     for q in mcqs:
@@ -839,10 +837,11 @@ elif menu == "주관식 출제 예측":
                             if actual_ans not in answer_map: answer_map[actual_ans] = []
                             answer_map[actual_ans].append(q)
                     
-                    # 가장 많이 출제된 순서대로 정렬
+                    # 2회 이상 출제된 모든 정답을 빈출순으로 정렬
                     sorted_a = sorted([item for item in answer_map.items() if len(item[1]) >= 2], key=lambda x: len(x[1]), reverse=True)
                     
-                    for ans_text, q_list in sorted_a[:max_predict]:
+                    # 슬라이싱 제거: sorted_a 전체를 순회
+                    for ans_text, q_list in sorted_a:
                         hints = ""
                         for idx, q in enumerate(q_list):
                             clean_c = re.sub(r'(\[이미지 설명:.*?\])', '', q.get('content', ''))
@@ -855,7 +854,7 @@ elif menu == "주관식 출제 예측":
                             'sub_author': "AI 예상(A형)"
                         })
                     
-                    # [적용] 사용자가 무작위 섞기를 선택한 경우에만 셔플 실행 (빈출순 선택 시 원본 sorted_a 순서 유지)
+                    # 정렬 방식 적용
                     if a_type_sort == "무작위 섞기 (실전 모드)":
                         random.shuffle(a_type_list)
 
@@ -865,35 +864,34 @@ elif menu == "주관식 출제 예측":
                         q_copy = copy.deepcopy(q)
                         q_copy['sub_author'] = f"{q_copy.get('sub_author', '')} (기존 족보)"
                         final_original_list.append(q_copy)
-                    # 기존 족보는 언제나 무작위로 섞어서 제공
                     random.shuffle(final_original_list)
 
-                # --- 최종 리스트 병합 (A형 -> 기존 족보 순서) ---
+                # --- 최종 리스트 병합 ---
                 final_predict_list = a_type_list + final_original_list
 
                 # PDF 생성
                 if not final_predict_list:
-                    st.error("생성된 문제가 없습니다. 조건을 확인해 주세요.")
+                    st.error("조건에 맞는 문제가 없습니다. (2회 이상 반복된 정답이 없을 수 있습니다.)")
                 else:
-                    filename = "Subjective_Master.pdf"
-                    topic_str = f"주관식 통합 (A형:{len(a_type_list)}제, 족보:{len(final_original_list)}제)"
+                    filename = "Subjective_Master_Full.pdf"
+                    topic_str = f"주관식 통합 (A형 예상:{len(a_type_list)}제, 족보:{len(final_original_list)}제)"
                     
                     result = create_exam_pdf(
                         final_predict_list, 
                         filename, 
                         answer_mode, 
-                        exam_title=f"{selected_exam} 주관식 예측",
+                        exam_title=f"{selected_exam} 주관식 문제 예측",
                         subject_title=selected_subject,
                         topic_title=topic_str
                     )
                     
                     if result == "성공":
-                        st.success(f"준비 완료! 총 {len(final_predict_list)}문항이 정렬되었습니다.")
+                        st.success(f"분석 완료! 추출 가능한 모든 문항({len(final_predict_list)}개)을 PDF에 담았습니다.")
                         with open(filename, "rb") as f:
                             st.download_button(
                                 label="📥 주관식 마스터 PDF 다운로드",
                                 data=f,
-                                file_name=f"{selected_exam}_{selected_subject}_주관식_마스터.pdf",
+                                file_name=f"{selected_exam}_{selected_subject}_주관식_전체마스터.pdf",
                                 mime="application/pdf"
                             )
                     else:
